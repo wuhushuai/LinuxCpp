@@ -1,13 +1,11 @@
 ﻿#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
+#include <assert.h>//assert
 #include <unistd.h>
-#include <netinet/in.h>//目前没人用到
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-
+#include <netinet/in.h>//目前没地方用到
+#include <arpa/inet.h>//=#include <sys/types.h> + #include <sys/socket.h>
+#define DEFAULT_BUFLEN 256
 
 int main(int argc, char* argv[])
 {
@@ -34,12 +32,12 @@ int main(int argc, char* argv[])
 	socklen_t outSocketaddrlen = sizeof(sockaddr_in); //socklen =
 	//socket 接受的 ip,port sizeof的地址;感觉用不到确实可以设置为NULL
 	int acceptSocket = accept(socketServer, (struct sockaddr*)&outSocketadrr,&outSocketaddrlen);
-	char recvbuf[256] = { 0 };
-	recv(acceptSocket, recvbuf, sizeof(recvbuf), 0);
+	char recvbuf[DEFAULT_BUFLEN] = { 0 };
+	recv(acceptSocket, recvbuf, sizeof(recvbuf), 0); 
 	printf("接收到的信息：%s\n", recvbuf);
 	char sendbuf[] = "你好，刚刚接受到了你的消息!";
 	send(acceptSocket, sendbuf, strlen(sendbuf) + 1, 0);
-	close(acceptSocket);
+	close(acceptSocket); 
 	close(socketServer);
 	return 0;
 }

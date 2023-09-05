@@ -34,13 +34,10 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="Server.cpp" />
-  </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{b512c199-31f3-40ea-9a37-27942c3d1b8d}</ProjectGuid>
+    <ProjectGuid>{854ba86e-8e32-4c94-995b-7db0f7925b9a}</ProjectGuid>
     <Keyword>Linux</Keyword>
-    <RootNamespace>LinuxCpp</RootNamespace>
+    <RootNamespace>LinuxCppC</RootNamespace>
     <MinimumVisualStudioVersion>15.0</MinimumVisualStudioVersion>
     <ApplicationType>Linux</ApplicationType>
     <ApplicationTypeRevision>1.0</ApplicationTypeRevision>
@@ -77,11 +74,10 @@
   <ImportGroup Label="Shared" />
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <ClCompile>
-      <CppLanguageStandard>c++17</CppLanguageStandard>
-    </ClCompile>
-  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="Client.cpp" />
+  </ItemGroup>
+  <ItemDefinitionGroup />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>
