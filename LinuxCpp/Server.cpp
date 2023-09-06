@@ -5,7 +5,34 @@
 #include <unistd.h>
 #include <netinet/in.h>//目前没地方用到
 #include <arpa/inet.h>//=#include <sys/types.h> + #include <sys/socket.h>
+#include <cstring>
 #define DEFAULT_BUFLEN 256
+
+int echo_clinet(int sockfd,  sockaddr_in outSocketadrr) {
+	char recvbuf[DEFAULT_BUFLEN] = "";
+	while (int clientRecv = recv(sockfd, recvbuf, sizeof(recvbuf), 0)) {
+		if (clientRecv == 0) {
+			perror("client closed ...");
+			exit(-1);
+		}
+		else if (clientRecv == -1) {
+			perror("recv");
+			exit(-1);
+		}
+		char* clientIp = inet_ntoa(outSocketadrr.sin_addr);
+		int clientPort = ntohs(outSocketadrr.sin_port);
+		printf("来自: ip %s port %d , 接收到的信息：%s\n", clientIp, clientPort, recvbuf);
+
+		char sendbuf[] = "你好，刚刚接受到了你的消息!";
+		int senlen = strlen(sendbuf) + strlen(recvbuf) + 1;
+		memcpy(sendbuf + strlen(sendbuf), recvbuf, senlen);
+		send(sockfd, sendbuf, senlen, 0);
+	}
+	;
+
+
+
+}
 
 int main(int argc, char* argv[])
 {
@@ -27,16 +54,25 @@ int main(int argc, char* argv[])
 	//1.这里可以不用(struct sockaddr*)
 	//监听
 	listen(socketServer, SOMAXCONN);
-
+	int acceptSocket{};
+	while (1) {
+	
 	struct sockaddr_in outSocketadrr;
 	socklen_t outSocketaddrlen = sizeof(sockaddr_in); //socklen =
 	//socket 接受的 ip,port sizeof的地址;感觉用不到确实可以设置为NULL
-	int acceptSocket = accept(socketServer, (struct sockaddr*)&outSocketadrr,&outSocketaddrlen);
-	char recvbuf[DEFAULT_BUFLEN] = { 0 };
-	recv(acceptSocket, recvbuf, sizeof(recvbuf), 0); 
-	printf("接收到的信息：%s\n", recvbuf);
-	char sendbuf[] = "你好，刚刚接受到了你的消息!";
-	send(acceptSocket, sendbuf, strlen(sendbuf) + 1, 0);
+	acceptSocket = accept(socketServer, (struct sockaddr*)&outSocketadrr,&outSocketaddrlen);
+
+	int pip = fork();
+	if (pip == 0) {
+		//我们在socket编程中调用 close 关闭已连接描述符时，其实只是将访问计数值减 1。而描述符只在访问计数为 0 时才真正关闭。所以为了正确的关闭连接，当调用 fork 函数后父进程将不需要的 已连接描述符关闭，而子进程关闭不需要的监听描述符。
+		close(socketServer);//子进程关闭监听套接字
+		echo_clinet(acceptSocket, outSocketadrr);
+		exit(0);
+	}
+
+	}
+
+
 	close(acceptSocket); 
 	close(socketServer);
 	return 0;

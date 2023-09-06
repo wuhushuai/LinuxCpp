@@ -15,12 +15,16 @@ int main(int argc, char* argv[])
 	Sockaddr.sin_family = AF_INET;
 	inet_pton(AF_INET, ip , &Sockaddr.sin_addr.s_addr);
 	connect(ClinSock, (sockaddr*)&Sockaddr,  sizeof(sockaddr_in));
-	char sendBuf[] = "66666666";
+	while (1) {
+	
+	char sendBuf[DEFAULT_BUFLEN] = "";
+	gets(sendBuf);
 	send(ClinSock, sendBuf, strlen(sendBuf) + 1, 0);
 	char recvBuf[DEFAULT_BUFLEN]="";
 	int iResult = recv(ClinSock, recvBuf, DEFAULT_BUFLEN, 0); //不确定会接受多大的内容
 	printf("Bytes received: %d\n", iResult);
 	printf("Webserver send : %s\n", recvBuf); 
+	}
 	close(ClinSock);
 	return 0;
 }
