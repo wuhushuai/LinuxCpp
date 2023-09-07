@@ -18,7 +18,7 @@ int main(int argc, char* argv[])
 	while (1) {
 	
 	char sendBuf[DEFAULT_BUFLEN] = "";
-	gets(sendBuf);
+	fgets(sendBuf, DEFAULT_BUFLEN,stdin);
 	send(ClinSock, sendBuf, strlen(sendBuf) + 1, 0);
 	char recvBuf[DEFAULT_BUFLEN]="";
 	int iResult = recv(ClinSock, recvBuf, DEFAULT_BUFLEN, 0); //不确定会接受多大的内容
