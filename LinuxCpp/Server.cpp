@@ -1,4 +1,7 @@
-﻿#include <stdio.h>
+﻿#ifdef __INTELLISENSE__ 
+using __float128 = long double; // or some fake 128 bit floating point type
+#endif
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>//assert
@@ -9,12 +12,14 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <pthread.h>
 #define DEFAULT_BUFLEN 256
+#define Threads_Max 128
 
 int echo_clinet(int sockfd,  sockaddr_in outSocketadrr) {
 	char recvbuf[DEFAULT_BUFLEN] = "";
 	while (int clientRecv = recv(sockfd, recvbuf, sizeof(recvbuf), 0)) {
-		if (clientRecv == 0 ) {//|| recvbuf[0] == 0x0A
+		if (clientRecv == 0 || recvbuf[0] == 0x0A) {//
 			perror("have client closed ...");
 			exit(-1);
 		}
@@ -49,14 +54,29 @@ int echo_clinet(int sockfd,  sockaddr_in outSocketadrr) {
 
 
 }
-void func_child(int arg) {
-	pid_t pid = -1;
-	while ((pid = waitpid(-1,NULL,WNOHANG))>0) {  //之前是pid = waitpid(-1,NULL,WNOHANG)>0 返回的是逻辑值
-		printf("child %d terminated\n", pid);
-	}
-	return;
 
+	
+	
+
+//线程函数
+struct  sockinfo {
+	int fd;
+	struct sockaddr_in clientaddr;
+	pthread_t tid;
+	sockinfo() {
+		fd = -1;
+		bzero(&clientaddr, sizeof(sockaddr_in));
+		tid = -1;
+	}
+};
+void* thread_func(void* arg) {
+	sockinfo* clientInfo = (sockinfo*)arg;
+	printf("soure tip: %d 's Client message", clientInfo->tid);
+	echo_clinet(clientInfo->fd, clientInfo->clientaddr);
+	return NULL;
 }
+//线程池
+sockinfo threadsSock[Threads_Max];
 
 int main(int argc, char* argv[])
 {
@@ -65,11 +85,7 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 	//
-	struct sigaction sig;
-	sig.sa_flags = 0;
-	sig.sa_handler = func_child;//指定回调函数
-	sigemptyset(&sig.sa_mask);//清空屏蔽信号机
-	sigaction(SIGCHLD, &sig, 0); //创建了一个处理SIGCHLD信号的函数，回收子进程资源
+		//../
 	//
 	
 	char * ip = argv[1];
@@ -117,16 +133,36 @@ int main(int argc, char* argv[])
 			exit(-1);
 		}
 	}
-	int pip = fork();	
-	if (pip == 0) {
-		//我们在socket编程中调用 close 关闭已连接描述符时，其实只是将访问计数值减 1。而描述符只在访问计数为 0 时才真正关闭。所以为了正确的关闭连接，当调用 fork 函数后父进程将不需要的 已连接描述符关闭，而子进程关闭不需要的监听描述符。
-		close(socketServer);  /* 关闭监听套接字*/
-		echo_clinet(acceptSocket, outSocketadrr);/*处理该客户端的请求*/
-		exit(0);
+	//------------------------------------------
+
+	//从线程池拿可用线程
+	struct sockinfo* pinfo;
+	for (int i = 0; i < Threads_Max; i++) {
+		// 从这个数组中找到一个可以用的sockInfo元素
+		if (threadsSock[i].fd == -1) {//如果找到子线程的情况
+			pinfo = &threadsSock[i]; //
+			break;
+		}
+		// i的取值范围  {0,127}
+		 //没有找到子线程的情况，再从后往前找
+		if (i == Threads_Max - 1) {
+			sleep(1);
+			i--;
+		}
 	}
+	//参数一：描述符文件赋值
+	pinfo->fd = acceptSocket;
+	//参数二：客户端的套接字结构体赋值,len就是结构体的大小
+	memcpy(&pinfo->clientaddr, &outSocketadrr, sizeof(sockaddr_in));
+
+	// 创建子线程,顺便可以给参数一赋值
+	pthread_create(&pinfo->tid, NULL, thread_func, pinfo);
+
+	pthread_detach(pinfo->tid); //分离线程，
+
 
 	}
-
+	//------------------------------------------
 
 	close(acceptSocket); 
 	close(socketServer);
