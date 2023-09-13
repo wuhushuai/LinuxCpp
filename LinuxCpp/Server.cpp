@@ -1,7 +1,7 @@
 ﻿#include <assert.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include <poll.h>
+#include <sys/epoll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,87 +11,84 @@
 #define CLIENT_MAX 1024
 
 int main() {
-
-	char recvBuf[DEFAULT_BUFLEN] = { 0 };
-	char sendBuf[DEFAULT_BUFLEN] = { 0 };
-
 	int lfd = socket(AF_INET, SOCK_STREAM, 0);
-	assert(lfd != -1);
-
-	sockaddr_in serverAddr;
-	memset(&serverAddr, 0, sizeof(serverAddr));
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(8080);
-	serverAddr.sin_addr.s_addr = INADDR_ANY;
-
-	if (bind(lfd, (sockaddr*)&serverAddr, sizeof(serverAddr)) == -1) {
-		perror("bind failed");
-		close(lfd);
-		return 1;
+	sockaddr_in addrsock;
+	addrsock.sin_addr.s_addr = INADDR_ANY;
+	addrsock.sin_family = AF_INET;
+	addrsock.sin_port = htons(8080);
+	int ret = bind(lfd, (sockaddr*)&addrsock, sizeof(sockaddr_in));
+	if (ret == -1) {
+		perror("bind");
+		exit(-1);
 	}
-	assert(listen(lfd, 8) != -1);
+	listen(lfd, 8);
 
-	pollfd fds[CLIENT_MAX];
-	for (int i = 0; i < CLIENT_MAX; i++) {
-		fds[i].fd = -1;
-		fds[i].events = POLLIN;
-		fds[i].revents = 0;
-	}
-	fds[0].fd = lfd;
-
-	int fdsMaxIndex = 0;
+	int epfd = epoll_create(800);
+	epoll_event epollet;
+	epollet.data.fd = lfd;
+	epollet.events = EPOLLIN;
+	epoll_ctl(epfd, EPOLL_CTL_ADD,lfd, &epollet);//虽然传入了两个文件描述符，参数3的描述符意思是对谁操作
+												//参数属于传入传出参数，会当epoll_wait的时候会返回变化
+	//  如果成功，函数返回0。如果失败，函数返回-1，并设置errno为相应的错误代码。
+	epoll_event epollets[CLIENT_MAX];
 
 	while (1) {
-		int ret = poll(fds, fdsMaxIndex + 1, -1);
-		assert(ret != -1);
-
-		if (fds[0].revents & POLLIN) {
-			sockaddr_in clientaddr;
-			bzero(&clientaddr, sizeof(sockaddr_in));
-			socklen_t len = sizeof(sockaddr);
-			int cfd = accept(lfd, (sockaddr*)&clientaddr, &len);
-			printf("client Get cfd = %d\n", cfd);
-
-			int i;
-			for (i = 1; i < CLIENT_MAX; i++) {
-				if (fds[i].fd == -1) {
-					fds[i].fd = cfd;
-					fds[i].events = POLLIN;
-					fdsMaxIndex = fdsMaxIndex > i ? fdsMaxIndex : i;
-					break;
+		//第二个参数就是输出参数，预计处理1024个连接，返回到这个结构体数组
+		int ret = epoll_wait(epfd, epollets, CLIENT_MAX, -1);
+		//第二个参数events [OUT]：指向epoll_event结构体数组的指针，用来接收就绪的事件
+		if (ret > 0 ) {
+			for (int i =0; i < ret ;i++) // 成功，返回发送变化的文件描述符的个数
+			{
+				int curfd = epollets[i].data.fd;
+				//如果是新客户端
+				if (curfd == lfd) {
+					sockaddr_in outsockAddr;
+					memset(&outsockAddr, 0, sizeof(sockaddr_in));
+					socklen_t len;
+					int cfd = accept(curfd, (sockaddr*)&outsockAddr, &len);
+					epollet.data.fd = cfd;
+					epollet.events = EPOLLIN;
+					epoll_ctl(epfd, EPOLL_CTL_ADD, cfd, &epollet);
+					printf("cfd = %d is come on!\n", cfd);
 				}
+				else
+				{
+					char recvBuf[DEFAULT_BUFLEN] = { 0 };
+					int recvRetn = recv(curfd, recvBuf, DEFAULT_BUFLEN, 0);
+					if (recvRetn > 0) {
+						printf("client cfd = %d get msg = %s\n", curfd, recvBuf);
+						//char sendBuf[DEFAULT_BUFLEN] = { 0 };
+						//fgets(sendBuf, DEFAULT_BUFLEN, stdin);
+						//send(curfd, sendBuf, strlen(sendBuf), 0);
+					}
+					else if(recvRetn < 0)
+					{
+						perror("recv");
+						continue;
+					}
+					else
+					{
+						printf("client cfd = %d is closed .....\n", curfd);
+						epoll_ctl(epfd, EPOLL_CTL_ADD, curfd, NULL); //用不到传入，因为是删除
+						close(curfd);
+					}
+				}
+
+
+
 			}
 
-			if (i == CLIENT_MAX) {
-				fprintf(stderr, "too many clients\n");
-				close(cfd);
-			}
+
+		}
+		else
+		{
+			perror("epoll_wait");
+			exit(-1);
 		}
 
-		for (int i = 1; i <= fdsMaxIndex; i++) {
-			if (fds[i].revents & POLLIN) {
-				memset(recvBuf, 0, sizeof(recvBuf));
-				int recvLen = recv(fds[i].fd, recvBuf, sizeof(recvBuf), 0);
-				if (recvLen > 0) {
-					printf("client msg: %s\n", recvBuf);
-					send(fds[i].fd, recvBuf, strlen(recvBuf) + 1, 0);
-				}
-				else if (recvLen == 0) {
-					printf("client Out fd = %d\n", i);
-					printf("client close...\n");
-					close(fds[i].fd);
-					fds[i].fd = -1;
-				}
-				else {
-					perror("recv error");
-					close(lfd);
-					close(fds[i].fd);
-					exit(-1);
-				}
-			}
-		}
+
 	}
-
 	close(lfd);
+	close(epfd);
 	return 0;
 }
