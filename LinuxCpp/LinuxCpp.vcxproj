@@ -35,7 +35,13 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="http_con.cpp" />
     <ClCompile Include="Server.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="http_con.h" />
+    <ClInclude Include="locker.h" />
+    <ClInclude Include="threadpool.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{b512c199-31f3-40ea-9a37-27942c3d1b8d}</ProjectGuid>
@@ -83,7 +89,7 @@
     </ClCompile>
     <Link />
     <Link>
-      <AdditionalOptions> -lpthread </AdditionalOptions>
+      <AdditionalOptions>-pthread</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

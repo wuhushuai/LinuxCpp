@@ -2,5 +2,11 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="Server.cpp" />
+    <ClCompile Include="http_con.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="locker.h" />
+    <ClInclude Include="threadpool.h" />
+    <ClInclude Include="http_con.h" />
   </ItemGroup>
 </Project>

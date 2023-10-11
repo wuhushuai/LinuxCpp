@@ -7,123 +7,133 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include "threadpool.h"
+#include "http_con.h"
+//fcntl  F_GETFL  F_SETFL O_NONBLOCK
+
+int http_con::http_epollfd = -1;
+int http_con::http_con_num = 0;
+
 #define DEFAULT_BUFLEN 256
 #define CLIENT_MAX 1024
+#define Connect_MAX 65535
 
-int main() {
-	//epoll的ET（Edge Triggered）模式并不会直接使recv不阻塞，它只是一种事件通知方式
-	int lfd = socket(AF_INET, SOCK_STREAM, 0);
-	sockaddr_in addrsock;
-	addrsock.sin_addr.s_addr = INADDR_ANY;
-	addrsock.sin_family = AF_INET;
-	addrsock.sin_port = htons(8080);
-	int ret = bind(lfd, (sockaddr*)&addrsock, sizeof(sockaddr_in));
-	if (ret == -1) {
-		perror("bind");
-		exit(-1);
+extern int setnonblocking(int fd);
+extern void addfd(int epollfd, int fd, bool one_shot,bool flag = 1);
+extern void removefd(int epollfd, int fd);
+
+void addsig(int sig, void(handler)(int)) {
+	struct sigaction sa;
+	memset(&sa, '\0', sizeof(sa));
+	sa.sa_handler = handler;
+	sigfillset(&sa.sa_mask);
+	assert(sigaction(sig, &sa, NULL) != -1);
+}
+
+
+
+int main(int argc , char * argv[]) {
+	printf("%s  %s  %s\n",argv[0],argv[1],argv[2]);
+	
+	if (argc != 3) {
+		printf("you should input Server.exe ip port\n");
+		return -1;
 	}
-	listen(lfd, 8);
-	//获取lfd文件描述符的属性，在TA属性上添加不阻塞的信息再填回lfd
+	
+	addsig(SIGPIPE, SIG_IGN);
+	
 
-	//想让recv不阻塞，你需要将socket套接字设置为非阻塞模式，下面不用提前设置，因为循环里就会设置
-	//int flags = fcntl(lfd, F_GETFL, 0);
-	//fcntl(lfd, F_SETFL, flags | O_NONBLOCK);
+	threadpool< http_con >* pool = NULL;
+	try {
+		pool = new threadpool<http_con>;
+	}
+	catch (...) {
+		return 1;
+	}
+	http_con* http = new http_con[Connect_MAX];	//连接类
 
-	int epfd = epoll_create(800);//800是随便填的，内核会自动判断要多少的值
-	epoll_event epollet;
-	epollet.data.fd = lfd;
-	epollet.events = EPOLLIN | EPOLLET;
-	epoll_ctl(epfd, EPOLL_CTL_ADD, lfd, &epollet);//虽然传入了两个文件描述符，参数3的描述符意思是对谁操作
-												//参数属于传入传出参数，会当epoll_wait的时候会返回变化
-	//  如果成功，函数返回0。如果失败，函数返回-1，并设置errno为相应的错误代码。
-	epoll_event epollets[CLIENT_MAX];
+	int listenfd = socket(AF_INET, SOCK_STREAM, 0);
+	sockaddr_in sockaddr_;
+	sockaddr_.sin_addr.s_addr = INADDR_ANY;
+	sockaddr_.sin_family = AF_INET;
+	sockaddr_.sin_port = htons(atoi(argv[2]));
 
-	while (1) {
-		//第二个参数就是输出参数，预计处理1024个连接，返回到这个结构体数组
-		int ret = epoll_wait(epfd, epollets, CLIENT_MAX, -1);
-		//第二个参数events [OUT]：指向epoll_event结构体数组的指针，用来接收就绪的事件
-		if (ret > 0) {
-			for (int i = 0; i < ret; i++) // 成功，返回发送变化的文件描述符的个数
-			{
-				int curfd = epollets[i].data.fd;
-				//如果是新客户端
-				if (curfd == lfd) {
-					sockaddr_in outsockAddr;
-					memset(&outsockAddr, 0, sizeof(sockaddr_in));
-					socklen_t len;
-					int cfd = accept(curfd, (sockaddr*)&outsockAddr, &len);
-					if (cfd == -1) {
-						perror("accept");
-						continue;
-					}
-					//吧cfd设置为不阻塞模式，使他接受数据不会阻塞
-					int flags = fcntl(cfd, F_GETFL, 0);
-					fcntl(cfd, F_SETFL, flags | O_NONBLOCK);//文件描述符的属性就会是不阻塞
-					//当你调用recv函数时，如果没有数据可以读取，recv就会立即返回，而不是等待数据到来。这样就实现了非阻塞。
+	// 端口复用   要在绑定之前
+	//也称为socket地址复用，是指在同一主机上允许多个套接字绑定到同一个端口号上，只要它们的 IP 地址不同就可以
+	int reuse = 1;
+	setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+	//opt：opt表示"option"，即选项。在网络编程中，我们可以通过设置不同的选项来控制套接字的行为。
+	//SOL_SOCKET：SOL_SOCKET是socket选项的级别。它表示我们要设置的选项是属于套接字级别的，而不是其他级别的选项。
+	//SO_REUSEADDR：SO_REUSEADDR是一个socket选项，用于启用端口复用。它允许多个套接字绑定到同一个端口。
+	//optval：optval是一个整数值，用于设置socket选项的值。在这个例子中，optval的值为1，表示启用SO_REUSEADDR选项。
+	bind(listenfd, (sockaddr*)&sockaddr_, sizeof(sockaddr));
+	listen(listenfd, 8);
 
-					//设置epoll接受事件的结构体epoll_event为非阻塞模式
-					epollet.data.fd = cfd;
-					epollet.events = EPOLLIN | EPOLLET;//epoll会对这个文件描述符启动ET模式
-					epoll_ctl(epfd, EPOLL_CTL_ADD, cfd, &epollet);
-					printf("cfd = %d is come on!\n", cfd);
+	// 创建epoll对象，和事件数组，添加
+	int epollfd = epoll_create(5); //1
+	epoll_event eventInfo[CLIENT_MAX];			//信息结构体
+	http_con::http_epollfd = epollfd;
+	addfd(epollfd, listenfd, false , false);
+
+	while (true) {
+		int number = epoll_wait(epollfd, eventInfo, CLIENT_MAX, -1);//等待事件的超时时间 -1无限等待 0：立即返回
+		//错误：返回-1并正确设置errno
+		if ((number < 0) && (errno != EINTR)) {//出现错误且不是被信号打断的情况
+			printf("epoll failure\n");
+			break;
+		}
+		for (int i = 0; i < number; i++) {
+			if (i == 0) {
+				printf("0\n");
+			}
+			int confd = eventInfo[i].data.fd;
+			if (confd == listenfd) {
+				sockaddr_in client_address;
+				socklen_t client_addrlength = sizeof(client_address);
+				confd = accept(listenfd, (sockaddr*)&client_address, &client_addrlength);
+				if (confd == -1) {
+					// accept错误处理
+					perror("accept\n");
+					continue;
 				}
-				else
+				if (http_con::http_con_num >= Connect_MAX) {
+					close(confd);
+					perror("too Connect_MAX\n");
+					continue;
+				}
+				http[confd].init(confd, client_address);
+			}
+			else if (eventInfo[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+					//出现断开，或者错误就close
+				printf("断开!\n");
+				http[confd].close();
+			}
+			else if (eventInfo[i].events & EPOLLIN) {
+				printf("get EPOLLIN\n");
+				if (http[confd].read()) {
+					pool->append(&http[confd]);
+				}
+				else //如果read完了就会返回true，那边断开或者出错就会返回false
 				{
-					char recvBuf[DEFAULT_BUFLEN] = { 0 };
-					int recvRetn = -1;
-					//while的循环不要吧下面 < 0这些判断包括进去了//我说怎么收不到断开连接
-					while (recvRetn = recv(curfd, recvBuf, DEFAULT_BUFLEN, 0)) {
-						if (recvRetn > 0) {
-							printf("client cfd = %d get msg = %s\n", curfd, recvBuf);
-							//char sendBuf[DEFAULT_BUFLEN] = { 0 };
-							//fgets(sendBuf, DEFAULT_BUFLEN, stdin);
-							//send(curfd, sendBuf, strlen(sendBuf), 0);
-
-							memset(recvBuf, 0, DEFAULT_BUFLEN);//清空接收缓冲区，以确保不会处理旧数据
-						}
-					}
-					if (recvRetn < 0)//当recv函数返回-1时，表示发生了错误。错误的类型可以通过检查errno变量来确定
-					{
-						//errno的值是EWOULDBLOCK或EAGAIN，表示当前没有更多的数据可读取，这不是算是一个错误
-						if (errno == EAGAIN || errno == EWOULDBLOCK) {
-							// 数据已经全部读完
-
-						}
-						else
-						{
-							perror("recv");
-							epoll_ctl(epfd, EPOLL_CTL_DEL, curfd, NULL);
-							close(curfd);
-
-						}
-
-					}
-					else if (recvRetn == 0)
-					{
-						printf("client cfd = %d is closed .....\n", curfd);
-						epoll_ctl(epfd, EPOLL_CTL_DEL, curfd, NULL); //用不到传入，因为是删除
-						close(curfd);
-					}
-
-
-
+					http[confd].close();
 				}
+				
+				
+			}
+			else if (eventInfo[i].events & EPOLLOUT) {
 
-
+				if (!http[confd].write()) {
+					http[confd].close();
+				}
 
 			}
-
-
 		}
-		else
-		{
-			perror("epoll_wait");
-			exit(-1);
-		}
-
 
 	}
-	close(lfd);
-	close(epfd);
+	close(epollfd);//epollfd也要
+	close(listenfd);
+	delete[] http;
+	delete pool;
 	return 0;
 }
+
