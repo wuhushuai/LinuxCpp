@@ -83,47 +83,51 @@ int main(int argc , char * argv[]) {
 			break;
 		}
 		for (int i = 0; i < number; i++) {
-			if (i == 0) {
-				printf("0\n");
-			}
+			
+			printf("i  =  %d\n",i);
+			
 			int confd = eventInfo[i].data.fd;
 			if (confd == listenfd) {
+				printf("print first client come on\n");
 				sockaddr_in client_address;
 				socklen_t client_addrlength = sizeof(client_address);
-				confd = accept(listenfd, (sockaddr*)&client_address, &client_addrlength);
-				if (confd == -1) {
+				//之前confd = accept(listenfd, (sockaddr*)&client_address, &client_addrlength);
+				int sockfd = accept(listenfd, (sockaddr*)&client_address, &client_addrlength);
+				printf("sockfd = %d\n", sockfd);
+				if (sockfd == -1) {
 					// accept错误处理
 					perror("accept\n");
 					continue;
 				}
 				if (http_con::http_con_num >= Connect_MAX) {
-					close(confd);
+					close(sockfd);
 					perror("too Connect_MAX\n");
 					continue;
 				}
-				http[confd].init(confd, client_address);
+				http[sockfd].init(sockfd, client_address);
 			}
 			else if (eventInfo[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
 					//出现断开，或者错误就close
 				printf("断开!\n");
-				http[confd].close();
+				http[confd].close_conn();
 			}
 			else if (eventInfo[i].events & EPOLLIN) {
-				printf("get EPOLLIN\n");
+				printf("get EPOLLIN confd = %d\n", confd);
 				if (http[confd].read()) {
 					pool->append(&http[confd]);
 				}
 				else //如果read完了就会返回true，那边断开或者出错就会返回false
 				{
-					http[confd].close();
+					printf("close  close close of (http[confd].read()\n");
+					http[confd].close_conn();
 				}
 				
 				
 			}
 			else if (eventInfo[i].events & EPOLLOUT) {
-
+				printf("EPOLLOUT! confd = %d\n", confd);
 				if (!http[confd].write()) {
-					http[confd].close();
+					http[confd].close_conn();
 				}
 
 			}

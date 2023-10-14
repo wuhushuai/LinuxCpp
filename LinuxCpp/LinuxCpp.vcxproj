@@ -43,6 +43,12 @@
     <ClInclude Include="locker.h" />
     <ClInclude Include="threadpool.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\index.html" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Resources\XXX.JPG" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{b512c199-31f3-40ea-9a37-27942c3d1b8d}</ProjectGuid>
     <Keyword>Linux</Keyword>

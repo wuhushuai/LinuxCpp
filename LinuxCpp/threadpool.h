@@ -98,11 +98,10 @@ void threadpool<T>::run()
 		T* request = m_workqueue.front();
 		m_workqueue.pop_front();
 		m_locker.unlock();//½âËø
-		if (request != nullptr) {
-			
-			request->process();
-			//modfd(request->http_epollfd, request->m_confd,EPOLLIN);//ADD
+		if (!request) {
+			continue;
 		}
+		request->process();
 		
 	}
 

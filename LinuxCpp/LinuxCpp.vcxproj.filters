@@ -9,4 +9,10 @@
     <ClInclude Include="threadpool.h" />
     <ClInclude Include="http_con.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\index.html" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Resources\XXX.JPG" />
+  </ItemGroup>
 </Project>
